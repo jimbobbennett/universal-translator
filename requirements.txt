@@ -1,0 +1,5 @@
+azure-eventhub
+azure-cognitiveservices-speech
+python-dotenv
+argparse
+requests
