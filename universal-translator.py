@@ -11,9 +11,10 @@ from dotenv import load_dotenv
 # Load the keys from the .env file
 load_dotenv()
 speech_key = os.environ['SPEECH_KEY']
+speech_location = os.environ['SPEECH_LOCATION']
 translator_key = os.environ['TRANSLATOR_KEY']
 translator_endpoint = os.environ['TRANSLATOR_ENDPOINT']
-service_location = os.environ['LOCATION']
+translator_location = os.environ['TRANSLATOR_LOCATION']
 event_hub_connection_string = os.environ['EVENT_HUB_CONNECTION_STRING']
 event_hub_name = os.environ['EVENT_HUB_NAME']
 
@@ -33,13 +34,16 @@ parser.add_argument("-hs", "--headset", action='store_true', help = "Pass this i
 # Read arguments from command line
 args = parser.parse_args()
 
-print("Users language is", args.language)
-print("Using headset is", args.headset)
+language = args.language
+headset = args.headset
+
+print("Users language is", language)
+print("Using headset is", headset)
 
 # Create an instance of a speech config with specified subscription key and service region.
-speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_location)
-speech_config.speech_recognition_language = args.language
-speech_config.speech_synthesis_language = args.language
+speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_location)
+speech_config.speech_recognition_language = language
+speech_config.speech_synthesis_language = language
 
 # Creates a speech recognizer and synthesizer using the default speaker as audio output.
 speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config)
@@ -68,7 +72,7 @@ def send_text(speech_text):
     event_data = EventData(speech_text)
 
     # Add properties for the sender and the senders language
-    event_data.properties = {'sender': sender_id, 'language': args.language}
+    event_data.properties = {'sender': sender_id, 'language': language}
 
     # Send the event data as a single entry in a batch
     event_data_batch.add(event_data)
@@ -89,13 +93,13 @@ async def main():
     def translate(text, source_language):
         # Build a REST request
         path = '/translate?api-version=3.0'
-        params = '&to=' + args.language + '&from=' + source_language
+        params = '&to=' + language + '&from=' + source_language
         constructed_url = translator_endpoint + path + params
 
         # Set the headers
         headers = {
             'Ocp-Apim-Subscription-Key': translator_key,
-            'Ocp-Apim-Subscription-Region': service_location,
+            'Ocp-Apim-Subscription-Region': translator_location,
             'Content-type': 'application/json',
             'X-ClientTraceId': str(uuid.uuid4())
         }
@@ -112,17 +116,17 @@ async def main():
         # Get back the result
         translated = response[0]['translations'][0]['text']
 
-        if not args.headset:
+        if not headset:
             speech_recognizer.stop_continuous_recognition_async()
 
         speech_synthesizer.speak_text(translated)
 
-        if not args.headset:
+        if not headset:
             speech_recognizer.start_continuous_recognition_async()
 
     async def receive_text(partition_context, event):
         if event.properties[b'sender'].decode('ascii') == sender_id:
-            print("Ignoring event")
+            print("Ignoring event from self")
         else:
             received_language = event.properties[b'language'].decode('ascii')
             received_text = event.body_as_str(encoding='UTF-8')
